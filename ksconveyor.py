@@ -45,12 +45,13 @@ import re
 import ConfigParser
 
 
-SECTIONS=('commands','packages','pre','post','post.header')
+SECTIONS=('commands','packages','pre','post','post.header','header','footer')
 
 class KSPart(object):
     _name=None
     _path=None
     _translate_extractor=None
+    _comment_re=None
     _translate=None
     _vars=None
 
@@ -58,6 +59,7 @@ class KSPart(object):
         self._name=os.path.basename(path)
         self._path=path
         self._translate_extractor=re.compile(r'@@(\w+)@@')
+        self._comment_re=re.compile(r'(#.*)(?:$|\n)')
         self._translate=False
         self._vars=set()
 
@@ -96,6 +98,11 @@ class KSPart(object):
                 res_text=re.sub('@@'+my_var+'@@',my_sub,res_text)
         return res_text
 
+    def _line_filter(self,s):
+        """Filter out comments etc."""
+        clean_line=self._comment_re.sub(r'$1',s)
+        return clean_line
+
     def lines(self):
         f=open(self._path,'r')
         for l in f:
@@ -124,13 +131,19 @@ class KSPart(object):
         return subs
         
     def listVars(self,my_text):
-        my_vars=self._translate_extractor.findall(my_text)
+        # my_vars=self._translate_extractor.findall(my_text)
+        my_lines=my_text.split("\n")
+        my_vars=[]
+        for l in my_lines:
+            line=self._line_filter(l)
+            my_vars.extend(self._translate_extractor.findall(line))
         my_vars.sort()
         return my_vars
 
     def scanVars(self):
         for l in self.lines():
-            pre_vars=self._translate_extractor.findall(l)
+            line=self._line_filter(l)
+            pre_vars=self._translate_extractor.findall(line)
             for v in pre_vars:
                 self._vars.add(v)
         my_vars=list(self._vars)
@@ -208,7 +221,10 @@ class KSPartsDB(object):
             s_path=os.path.join(self._path,s)
             if not self._db.has_key(s):
                 self._db[s]={}
-            pn_list=os.listdir(s_path)
+            try:
+                pn_list=os.listdir(s_path)
+            except OSError:
+                pn_list=[]
             pn_list.sort()
             for pn in pn_list:
                 if not pn in self._blacklist:
@@ -262,7 +278,10 @@ class KSTemplate(object):
         for s in SECTIONS:
             self._parts[s]={}
             s_path=os.path.join(self._path,s)
-            p_list=os.listdir(s_path)
+            try:
+                p_list=os.listdir(s_path)
+            except OSError:
+                p_list=[]
             p_list.sort()
             for p in p_list:
                 p_path=os.path.join(s_path,p)
@@ -555,6 +574,8 @@ class KSAssembler(object):
 
     def assemble(self,template_id,pkg_opts,var_summary=False,dry_run=False,extra_parts=None,exclude_parts=None,legacy_mode=False):
         template=self._conveyor.templates[template_id]
+        ks_header=template.parts['header']
+        ks_footer=template.parts['footer']
         ks_commands=template.parts['commands']
         ks_packages=template.parts['packages']
         ks_pre=template.parts['pre']
@@ -627,6 +648,7 @@ class KSAssembler(object):
                     print(l,end='')
                 # the_cat(my_part.path)
 
+        cat(ks_header,'header')
         cat(ks_commands,'commands')
 
         print("\n%packages "+pkg_opts)
@@ -653,6 +675,7 @@ class KSAssembler(object):
             for l in my_post.lines():
                 print(l,end='')
             if not legacy_mode: print("\n%end")
+        cat(ks_footer,'footer')
 
 
 Assembler=KSAssembler
