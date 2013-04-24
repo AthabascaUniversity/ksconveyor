@@ -305,7 +305,11 @@ class KSTemplate(object):
         """Detach part from in-memory instance of template only.
         Useful for quick manipulations.
         Changes are not transfered to disk"""
-        del self._parts[section][part_name]
+        try:
+            del self._parts[section][part_name]
+        except KeyError,e:
+            print("Can't exclude {0}/{1} : {2} isn't part of this template".format(section,part_name,e),file=sys.stderr)
+            sys.exit(1)
 
     def attachPart(self,section,part,part_type=KSPartL):
         """Attach part to in-memory instance only.
